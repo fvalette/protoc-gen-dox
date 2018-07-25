@@ -119,8 +119,12 @@ class ProtoDox(object):
     base class
     each undocument element return "No doc string !"
     """
-    def __init__(self, name):
-        self._name = name
+    def __init__(self, name, prefix=""):
+        self._basename = name.split('.', 1)[0]
+        self._name = ""
+        if prefix:
+            self._name += prefix + "."
+        self._name += name
         self._doc_string = "No doc_string !"
 
     def set_doc_string(self, doc_string):
@@ -148,8 +152,8 @@ class ProtoFieldDoc(ProtoDox):
         return doc
 
 class ProtoMessageDox(ProtoDox):
-    def __init__(self, name, nested=False):
-        ProtoDox.__init__(self, name)
+    def __init__(self, name, prefix="", nested=False):
+        ProtoDox.__init__(self, name, prefix)
         self._nested = nested
         self._nested_enums = list()
         self._nested_messages = list()
@@ -164,14 +168,12 @@ class ProtoMessageDox(ProtoDox):
 
     def parse_enums(self, enums):
         for enum in enums:
-            name = self._name + "." + enum.name
-            self._nested_enums.append(ProtoEnumDox(name, True))
+            self._nested_enums.append(ProtoEnumDox(enum.name, self._name, True))
             self._nested_enums[-1].parse_value(enum.value)
 
     def parse_nested(self, messages):
         for msg in messages:
-            name = self._name + "." + msg.name
-            self._nested_messages.append(ProtoMessageDox(name, True))
+            self._nested_messages.append(ProtoMessageDox(msg.name, self._name, True))
             self._nested_messages[-1].parse_enums(msg.enum_type)
             self._nested_messages[-1].parse_nested(msg.nested_type)
             self._nested_messages[-1].parse_field(msg.field)
@@ -202,18 +204,13 @@ class ProtoMessageDox(ProtoDox):
 
     def to_doxygen(self):
         doc = ""
-        if not self._nested:
-            doc += start_doxygen_bloc()
-            doc += add_doxygen_cmd("page", self._name)
 
-        for enum in self._nested_enums:
-            doc += enum.to_doxygen()
+        if self._nested:
+            doc += add_doxygen_cmd("subsubsection", self._basename)
+        else:
+            doc += add_doxygen_cmd("subsection", self._basename)
 
-        for nested in self._nested_messages:
-            doc += nested.to_doxygen()
-
-        doc += add_doxygen_cmd("brief", self._doc_string)
-
+        doc += self._doc_string
 
         doc += html_table_begin()
         doc += html_caption(self._name)
@@ -229,8 +226,12 @@ class ProtoMessageDox(ProtoDox):
 
         doc += html_table_end()
 
-        if not self._nested:
-            doc += end_doxygen_bloc()
+        for enum in self._nested_enums:
+            doc += enum.to_doxygen()
+
+        for nested in self._nested_messages:
+            doc += nested.to_doxygen()
+
         return doc
 
 
@@ -248,8 +249,8 @@ class ProtoEnumValueDox(ProtoDox):
 
 
 class ProtoEnumDox(ProtoDox):
-    def __init__(self, name, nested=False):
-        ProtoDox.__init__(self, name)
+    def __init__(self, name, prefix="", nested=False):
+        ProtoDox.__init__(self, name, prefix)
         self._nested = nested
         self._values = list()
         trace("Add " + self._name + (" (nested)" if self._nested else ""))
@@ -275,11 +276,13 @@ class ProtoEnumDox(ProtoDox):
 
     def to_doxygen(self):
         doc = ""
-        if not self._nested:
-            doc += start_doxygen_bloc()
-            doc += add_doxygen_cmd("page", self._name)
-        doc += add_doxygen_cmd("brief", self._doc_string)
 
+        if self._nested:
+            doc += add_doxygen_cmd("subsubsection", self._basename)
+        else:
+            doc += add_doxygen_cmd("subsection", self._basename)
+
+        doc += self._doc_string
         doc += html_table_begin()
         doc += html_caption(self._name)
         doc += html_raw()
@@ -292,30 +295,24 @@ class ProtoEnumDox(ProtoDox):
 
         doc += html_table_end()
 
-        if not self._nested:
-            doc += end_doxygen_bloc()
-
         return doc
 
 
 class ProtoFileDox(ProtoDox):
     def __init__(self, filename, package):
         ProtoDox.__init__(self, filename)
-        PACKAGE = package
         self._prefix = package
         self._enums = list()
         self._messages = list()
 
     def parse_enums(self, enums):
         for enum in enums:
-            name = self._prefix + "." + enum.name
-            self._enums.append(ProtoEnumDox(name))
+            self._enums.append(ProtoEnumDox(enum.name, self._prefix))
             self._enums[-1].parse_value(enum.value)
 
     def parse_messages(self, messages):
         for msg in messages:
-            name = self._prefix + "." + msg.name
-            self._messages.append(ProtoMessageDox(name))
+            self._messages.append(ProtoMessageDox(msg.name, self._prefix))
             self._messages[-1].parse_enums(msg.enum_type)
             self._messages[-1].parse_nested(msg.nested_type)
             self._messages[-1].parse_field(msg.field)
@@ -351,22 +348,18 @@ class ProtoFileDox(ProtoDox):
     def to_doxygen(self):
         self._doc_string = start_doxygen_bloc()
         self._doc_string += add_doxygen_cmd("file", self._name)
-        self._doc_string += add_doxygen_cmd("ingroup", PACKAGE)
-        self._doc_string += add_doxygen_cmd("page", self._prefix)
-
-        for enum in self._enums:
-            self._doc_string += add_doxygen_cmd("subpage", enum._name)
-
-        for message in self._messages:
-            self._doc_string += add_doxygen_cmd("subpage", message._name)
-
-        self._doc_string += end_doxygen_bloc()
+        self._doc_string += add_doxygen_cmd("page", self._name)
+        self._doc_string += add_doxygen_cmd("tableofcontents", "")
+        self._doc_string += add_doxygen_cmd("section", self._basename)
 
         for enum in self._enums:
             self._doc_string += enum.to_doxygen()
 
         for message in self._messages:
             self._doc_string += message.to_doxygen()
+
+        self._doc_string += end_doxygen_bloc()
+
         return self._doc_string
 
 
