@@ -14,6 +14,7 @@ LOCATION_ENUM_TYPE = 5
 LOCATION_NESTED_ENUM_TYPE = 4
 LOCATION_NESTED_MSG_TYPE = 3
 LOCATION_VALUE_TYPE = 2
+LOCATION_ONEOF_TYPE = 8
 
 if sys.version_info >= (3, 0):
     STDERR_STREAM = sys.stderr.buffer
@@ -40,7 +41,7 @@ def html_table_begin():
     return "<table>\n"
 
 def html_caption(label):
-    return "<caption id=\""+ label + "\">" + label + "</caption>"
+    return "<caption id=\""+ label + "\">" + label + "</caption>\n"
 
 def html_table_end():
     return "</table>\n"
@@ -55,7 +56,14 @@ def html_col(text, **kwargs):
     doc = "<td"
     for key, value in kwargs.items():
         doc += " " + key + "=\"" + str(value) + "\""
-    doc += ">" + str(text) + "</td>"
+    doc += ">"
+
+    if isinstance(text, unicode) or isinstance(text, str):
+        doc += text
+    else:
+        doc += str(text).encode('utf-8')
+    doc += "</td>\n"
+
     return doc
 
 
@@ -84,6 +92,12 @@ def protobuf_label2str(label):
         return "unknown"
 
 def protobuf_type2desc(field_desc):
+    """
+    Convertie les type protobuf en texte.
+    Pour les type enum et message, imprime le nom du type avec un lien vers sa
+    description
+    Le premier caractère étant un '.' il est retiré pour ces deux types là
+    """
     if field_desc.type == desc.TYPE_BOOL:
         return "bool"
     elif field_desc.type == desc.TYPE_BYTES:
@@ -136,7 +150,7 @@ class ProtoDox(object):
         if prefix:
             self._name += prefix + "."
         self._name += name
-        self._doc_string = "No doc_string !"
+        self._doc_string = "<b><i>No doc_string !</i></b>"
 
     def set_doc_string(self, doc_string):
         if doc_string:
@@ -146,18 +160,45 @@ class ProtoDox(object):
         return self._doc_string
 
 
-class ProtoFieldDoc(ProtoDox):
+class ProtoOneOfDox(ProtoDox):
+    def __init__(self, field_desc):
+        ProtoDox.__init__(self, field_desc.name)
+
+    def to_doxygen(self):
+        doc = html_raw()
+        doc += html_col("<b>" + self._name + "</b>")
+        doc += html_col("<b>oneof</b>")
+        doc += html_col("<b>-</b>", align="center")
+        doc += html_col("<b>-</b>", align="center")
+        doc += html_col(self._doc_string)
+        return doc
+
+class ProtoFieldDox(ProtoDox):
     def __init__(self, field_desc):
         ProtoDox.__init__(self, field_desc.name)
         self._type = protobuf_type2desc(field_desc)
         self._id = field_desc.number
         self._label = protobuf_label2str(field_desc.label)
+        if hasattr(field_desc, "oneof_index") and \
+           field_desc.HasField("oneof_index"):
+            self._oneof_index = field_desc.oneof_index
+        else:
+            self._oneof_index = None
+
+    def is_part_of_oneof(self):
+        return self._oneof_index is not None
 
     def to_doxygen(self):
         doc = html_raw()
+
+        if self.is_part_of_oneof():
+            doc += html_col("<i>" + self._name + "</i>", align="right")
+            doc += html_col("-", align="center")
+        else:
+            doc += html_col(self._name)
+            doc += html_col(self._label)
+
         doc += html_col(self._id)
-        doc += html_col(self._name)
-        doc += html_col(self._label)
         doc += html_col(self._type)
         doc += html_col(self._doc_string)
         return doc
@@ -168,14 +209,14 @@ class ProtoMessageDox(ProtoDox):
         self._nested = nested
         self._nested_enums = list()
         self._nested_messages = list()
+        self._oneofs = list()
         self._fields = list()
-        trace("Add " + self._name + (" (nested)" if self._nested else ""))
-
 
     def parse_field(self, fields):
         for f in fields:
-            #trace(str(f))
-            self._fields.append(ProtoFieldDoc(f))
+            if hasattr(f, "oneof_index") and f.HasField("oneof_index"):
+                pass #trace("is part of oneof " + str(f.oneof_index))
+            self._fields.append(ProtoFieldDox(f))
 
     def parse_enums(self, enums):
         for enum in enums:
@@ -185,9 +226,14 @@ class ProtoMessageDox(ProtoDox):
     def parse_nested(self, messages):
         for msg in messages:
             self._nested_messages.append(ProtoMessageDox(msg.name, self._name, True))
+            self._nested_messages[-1].parse_oneof(msg.oneof_decl)
             self._nested_messages[-1].parse_enums(msg.enum_type)
             self._nested_messages[-1].parse_nested(msg.nested_type)
             self._nested_messages[-1].parse_field(msg.field)
+
+    def parse_oneof(self, oneofs):
+        for oneof in oneofs:
+            self._oneofs.append(ProtoOneOfDox(oneof))
 
     def set_elem_doc_string(self, location, index_offset):
         elem_type = location.path[index_offset]
@@ -195,22 +241,23 @@ class ProtoMessageDox(ProtoDox):
         path_len = len(location.path)
 
         if (elem_type == LOCATION_NESTED_ENUM_TYPE):
-            trace("nested enum")
             elem = self._nested_enums[elem_idx]
         elif (elem_type == LOCATION_NESTED_MSG_TYPE):
-            trace("nested msg")
             elem = self._nested_messages[elem_idx]
         elif (elem_type == LOCATION_VALUE_TYPE):
-            trace("msg value")
             elem = self._fields[elem_idx]
+        elif (elem_type == LOCATION_ONEOF_TYPE):
+            elem = self._oneofs[elem_idx]
+        else:
+            return
 
         if (path_len == (index_offset + 2)):
-            if isinstance(elem, ProtoFieldDoc):
+            if isinstance(elem, ProtoFieldDox):
                 doc_string = location.trailing_comments
             else:
                 doc_string = location.leading_comments
             elem.set_doc_string(doc_string)
-        else:
+        elif not isinstance(elem, ProtoFieldDox):
             elem.set_elem_doc_string(location, index_offset + 2)
 
     def to_doxygen(self):
@@ -226,14 +273,22 @@ class ProtoMessageDox(ProtoDox):
         doc += html_table_begin()
         doc += html_caption(self._name)
         doc += html_raw()
-        doc += html_col_title("Id")
         doc += html_col_title("Nom")
         doc += html_col_title("Label")
+        doc += html_col_title("Id")
         doc += html_col_title("Type")
         doc += html_col_title("Description")
 
+        cur_oneof_idx = None
         for field in self._fields:
+            if field.is_part_of_oneof() and cur_oneof_idx != field._oneof_index:
+                cur_oneof_idx = field._oneof_index
+                doc += self._oneofs[cur_oneof_idx].to_doxygen()
+
             doc += field.to_doxygen()
+
+            if not field.is_part_of_oneof() and cur_oneof_idx is not None:
+                cur_oneof_idx = None
 
         doc += html_table_end()
 
@@ -264,7 +319,6 @@ class ProtoEnumDox(ProtoDox):
         ProtoDox.__init__(self, name, prefix)
         self._nested = nested
         self._values = list()
-        trace("Add " + self._name + (" (nested)" if self._nested else ""))
 
     def parse_value(self, values):
         for v in values:
@@ -276,7 +330,6 @@ class ProtoEnumDox(ProtoDox):
         path_len = len(location.path)
 
         if (elem_type == LOCATION_VALUE_TYPE):
-            trace("enum value")
             elem = self._values[elem_idx]
         else:
             return
@@ -324,6 +377,7 @@ class ProtoFileDox(ProtoDox):
     def parse_messages(self, messages):
         for msg in messages:
             self._messages.append(ProtoMessageDox(msg.name, self._prefix))
+            self._messages[-1].parse_oneof(msg.oneof_decl)
             self._messages[-1].parse_enums(msg.enum_type)
             self._messages[-1].parse_nested(msg.nested_type)
             self._messages[-1].parse_field(msg.field)
@@ -338,13 +392,10 @@ class ProtoFileDox(ProtoDox):
             elem_type = location.path[0]
             elem_idx = location.path[1]
 
-            trace(str(location.path))
 
             if (elem_type == LOCATION_MSG_TYPE):
-                trace("msg")
                 elem = self._messages[elem_idx]
             elif (elem_type == LOCATION_ENUM_TYPE):
-                trace("enum")
                 elem = self._enums[elem_idx]
             else:
                 continue
@@ -377,6 +428,7 @@ class ProtoFileDox(ProtoDox):
 def generate_code(request, response):
     for proto_file in request.proto_file:
         proto_file_dox = ProtoFileDox(proto_file.name, proto_file.package)
+
         proto_file_dox.parse_enums(proto_file.enum_type)
         proto_file_dox.parse_messages(proto_file.message_type)
         proto_file_dox.parse_source_code_locations(proto_file.source_code_info.location)
