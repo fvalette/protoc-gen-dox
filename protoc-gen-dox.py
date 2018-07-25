@@ -1,4 +1,8 @@
-#!/usr/bin/python3
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import sys
 
@@ -11,11 +15,18 @@ LOCATION_NESTED_ENUM_TYPE = 4
 LOCATION_NESTED_MSG_TYPE = 3
 LOCATION_VALUE_TYPE = 2
 
-PACKAGE = ""
+if sys.version_info >= (3, 0):
+    STDERR_STREAM = sys.stderr.buffer
+    STDIN_STREAM  = sys.stdin.buffer
+    STDOUT_STREAM = sys.stdout.buffer
+else:
+    STDERR_STREAM = sys.stderr
+    STDIN_STREAM  = sys.stdin
+    STDOUT_STREAM = sys.stdout
 
 def trace(s):
-    sys.stderr.buffer.write(s.encode("utf-8"))
-    sys.stderr.buffer.write("\n".encode("utf-8"))
+    STDERR_STREAM.write(s.encode("utf-8"))
+    STDERR_STREAM.write("\n".encode("utf-8"))
 
 def start_doxygen_bloc():
     """Start doxygen comment bloc"""
@@ -377,7 +388,7 @@ def generate_code(request, response):
 
 if __name__ == '__main__':
 
-    data = sys.stdin.buffer.read()
+    data = STDIN_STREAM.read()
 
     request = plugin.CodeGeneratorRequest()
     request.ParseFromString(data)
@@ -386,4 +397,4 @@ if __name__ == '__main__':
     generate_code(request, response)
 
     output = response.SerializeToString()
-    sys.stdout.buffer.write(output)
+    STDOUT_STREAM.write(output)
