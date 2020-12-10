@@ -109,7 +109,7 @@ def protobuf_type2desc(field_desc):
     elif field_desc.type == desc.TYPE_ENUM:
         return "@ref " + field_desc.type_name[1:]
     elif field_desc.type == desc.TYPE_FIELD_NUMBER:
-        return ""
+        return "int32"
     elif field_desc.type == desc.TYPE_FIXED32:
         return "fixed point 32"
     elif field_desc.type == desc.TYPE_FIXED64:
