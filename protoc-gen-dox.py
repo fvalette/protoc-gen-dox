@@ -58,10 +58,12 @@ def html_col(text, **kwargs):
         doc += " " + key + "=\"" + str(value) + "\""
     doc += ">"
 
-    if isinstance(text, unicode) or isinstance(text, str):
+    if isinstance(text, str):
         doc += text
+    elif isinstance(text, bytes):
+        doc += text.decode()
     else:
-        doc += str(text).encode('utf-8')
+        doc += str(text)
     doc += "</td>\n"
 
     return doc
