@@ -17,6 +17,7 @@ LOCATION_VALUE_TYPE = 2
 LOCATION_ONEOF_TYPE = 8
 
 if sys.version_info >= (3, 0):
+    unicode = str
     STDERR_STREAM = sys.stderr.buffer
     STDIN_STREAM  = sys.stdin.buffer
     STDOUT_STREAM = sys.stdout.buffer
@@ -58,10 +59,10 @@ def html_col(text, **kwargs):
         doc += " " + key + "=\"" + str(value) + "\""
     doc += ">"
 
-    if isinstance(text, str):
+    if isinstance(text, unicode) or isinstance(text, str):
         doc += text
     elif isinstance(text, bytes):
-        doc += text.decode()
+        doc += text.decode('utf-8')
     else:
         doc += str(text)
     doc += "</td>\n"
