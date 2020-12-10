@@ -147,7 +147,7 @@ class ProtoDox(object):
     each undocument element return "No doc string !"
     """
     def __init__(self, name, prefix=""):
-        self._basename = name.split('.', 1)[0]
+        self._basename = name.split('.', 1)[0].replace('/', '_')
         self._name = ""
         if prefix:
             self._name += prefix + "."
@@ -263,7 +263,7 @@ class ProtoMessageDox(ProtoDox):
             elem.set_elem_doc_string(location, index_offset + 2)
 
     def to_doxygen(self):
-        doc = ""
+        doc = "\\n" # to nicely separate messages/enum in html output
 
         if self._nested:
             doc += add_doxygen_cmd("subsubsection", self._basename)
@@ -341,7 +341,7 @@ class ProtoEnumDox(ProtoDox):
             elem.set_doc_string(doc_string)
 
     def to_doxygen(self):
-        doc = ""
+        doc = "\\n" # to separate nicely messages/enum in html output
 
         if self._nested:
             doc += add_doxygen_cmd("subsubsection", self._basename)
@@ -415,6 +415,7 @@ class ProtoFileDox(ProtoDox):
         self._doc_string += add_doxygen_cmd("page", self._name)
         self._doc_string += add_doxygen_cmd("tableofcontents", "")
         self._doc_string += add_doxygen_cmd("section", self._basename)
+        self._doc_string += add_doxygen_cmd("brief", "   ")
 
         for enum in self._enums:
             self._doc_string += enum.to_doxygen()
