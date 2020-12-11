@@ -17,6 +17,7 @@ LOCATION_VALUE_TYPE = 2
 LOCATION_ONEOF_TYPE = 8
 
 if sys.version_info >= (3, 0):
+    unicode = str
     STDERR_STREAM = sys.stderr.buffer
     STDIN_STREAM  = sys.stdin.buffer
     STDOUT_STREAM = sys.stdout.buffer
@@ -60,8 +61,10 @@ def html_col(text, **kwargs):
 
     if isinstance(text, unicode) or isinstance(text, str):
         doc += text
+    elif isinstance(text, bytes):
+        doc += text.decode('utf-8')
     else:
-        doc += str(text).encode('utf-8')
+        doc += str(text)
     doc += "</td>\n"
 
     return doc
@@ -107,7 +110,7 @@ def protobuf_type2desc(field_desc):
     elif field_desc.type == desc.TYPE_ENUM:
         return "@ref " + field_desc.type_name[1:]
     elif field_desc.type == desc.TYPE_FIELD_NUMBER:
-        return ""
+        return "int32"
     elif field_desc.type == desc.TYPE_FIXED32:
         return "fixed point 32"
     elif field_desc.type == desc.TYPE_FIXED64:
@@ -145,7 +148,7 @@ class ProtoDox(object):
     each undocument element return "No doc string !"
     """
     def __init__(self, name, prefix=""):
-        self._basename = name.split('.', 1)[0]
+        self._basename = name.split('.', 1)[0].replace('/', '_')
         self._name = ""
         if prefix:
             self._name += prefix + "."
@@ -261,7 +264,7 @@ class ProtoMessageDox(ProtoDox):
             elem.set_elem_doc_string(location, index_offset + 2)
 
     def to_doxygen(self):
-        doc = ""
+        doc = "\\n" # to nicely separate messages/enum in html output
 
         if self._nested:
             doc += add_doxygen_cmd("subsubsection", self._basename)
@@ -339,7 +342,7 @@ class ProtoEnumDox(ProtoDox):
             elem.set_doc_string(doc_string)
 
     def to_doxygen(self):
-        doc = ""
+        doc = "\\n" # to separate nicely messages/enum in html output
 
         if self._nested:
             doc += add_doxygen_cmd("subsubsection", self._basename)
@@ -413,6 +416,7 @@ class ProtoFileDox(ProtoDox):
         self._doc_string += add_doxygen_cmd("page", self._name)
         self._doc_string += add_doxygen_cmd("tableofcontents", "")
         self._doc_string += add_doxygen_cmd("section", self._basename)
+        self._doc_string += add_doxygen_cmd("brief", "   ")
 
         for enum in self._enums:
             self._doc_string += enum.to_doxygen()
